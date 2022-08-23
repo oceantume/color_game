@@ -2,7 +2,7 @@ use std::{env, path::PathBuf};
 
 pub fn main() {
     cc::Build::new()
-        .cpp(false)
+        .cpp(true)
         .shared_flag(true)
         .static_flag(true)
         .file("mixbox/mixbox.cpp")
