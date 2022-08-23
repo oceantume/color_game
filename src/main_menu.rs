@@ -13,13 +13,18 @@ impl Plugin for MainMenuPlugin {
             SystemSet::on_exit(AppState::MainMenu).with_system(teardown),
         )
         .add_system_set(
-            SystemSet::on_update(AppState::MainMenu).with_system(play),
+            SystemSet::on_update(AppState::MainMenu)
+                .with_system(play)
+                .with_system(menu_item_hover),
         );
     }
 }
 
 #[derive(Component)]
 struct MainMenu;
+
+#[derive(Component)]
+struct MenuItem;
 
 #[derive(Component)]
 struct PlayButton;
@@ -99,16 +104,16 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                         ..default()
                     })
                     .insert(PlayButton)
+                    .insert(MenuItem)
                     .with_children(|play_btn| {
-                        play_btn
-                            .spawn_bundle(TextBundle::from_section(
-                                "Play",
-                                TextStyle {
-                                    font: asset_server.load("edosz.ttf"),
-                                    font_size: 30.0,
-                                    color: Color::BLACK,
-                                },
-                            ));
+                        play_btn.spawn_bundle(TextBundle::from_section(
+                            "Play",
+                            TextStyle {
+                                font: asset_server.load("edosz.ttf"),
+                                font_size: 30.0,
+                                color: Color::BLACK,
+                            },
+                        ));
                     });
                     menu.spawn_bundle(ButtonBundle {
                         color: Color::NONE.into(),
@@ -118,6 +123,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                         },
                         ..default()
                     })
+                    .insert(MenuItem)
                     .with_children(|play_btn| {
                         play_btn.spawn_bundle(TextBundle::from_section(
                             "Play",
@@ -130,6 +136,40 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     });
                 });
         });
+}
+
+// NOTE: This can't work because we need to get the button's text.
+// Text and Interaction are not on the same component.
+fn menu_item_hover(
+    btn_query: Query<
+        &Interaction,
+        (Changed<Interaction>, With<MenuItem>),
+    >,
+    mut text_query: Query<
+        (&Parent, &mut Text)
+    >
+) {
+    for (parent, mut text) in text_query.iter_mut() {
+        if let Ok(interaction) = btn_query.get(**parent) {
+            match interaction {
+                Interaction::Clicked => (),
+                Interaction::Hovered => {
+                    text
+                        .sections
+                        .iter_mut()
+                        .for_each(|s| s.style.font_size = 35.0);
+                }
+                Interaction::None => {
+                    text
+                        .sections
+                        .iter_mut()
+                        .for_each(|s| s.style.font_size = 30.0);
+                },
+            }
+        }
+        
+
+    }
 }
 
 fn teardown(mut commands: Commands, query: Query<Entity, With<MainMenu>>) {
