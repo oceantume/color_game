@@ -4,7 +4,7 @@ mod color_mixer;
 mod main_menu;
 mod game;
 
-pub const LAUNCHER_TITLE: &str = "Bevy Jam #2";
+pub const LAUNCHER_TITLE: &str = "Guess Hue?";
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum AppState {

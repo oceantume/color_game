@@ -17,11 +17,17 @@ impl Plugin for GamePlugin {
         )
         .add_system_set(
             SystemSet::on_update(AppState::InGame)
+                .with_system(exit_clicked)
                 .with_system(color_button_clicked)
                 .with_system(player_color_update),
         );
     }
 }
+#[derive(Component)]
+struct GameUIRoot;
+
+#[derive(Component)]
+struct MenuButton;
 
 #[derive(Component)]
 struct TargetColor;
@@ -38,7 +44,7 @@ struct ColorSelector {
     color: Color,
 }
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn_bundle(NodeBundle {
             style: Style {
@@ -50,6 +56,7 @@ fn setup(mut commands: Commands) {
             color: Color::NONE.into(),
             ..default()
         })
+        .insert(GameUIRoot)
         .with_children(|main_container| {
             main_container
                 .spawn_bundle(NodeBundle {
@@ -174,10 +181,50 @@ fn setup(mut commands: Commands) {
                             color: Color::CYAN.into(),
                         });
                 });
+
+            main_container
+                .spawn_bundle(ButtonBundle {
+                    color: Color::NONE.into(),
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        ..default()
+                    },
+                    ..default()
+                })
+                .insert(MenuButton)
+                .with_children(|btn| {
+                    btn.spawn_bundle(TextBundle::from_section(
+                        "Menu",
+                        TextStyle {
+                            font: asset_server.load("edosz.ttf"),
+                            font_size: 30.0,
+                            color: Color::BLACK,
+                        },
+                    ));
+                });
         });
 }
 
-fn teardown() {}
+fn teardown(mut commands: Commands, query: Query<Entity, With<GameUIRoot>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+}
+
+fn exit_clicked(
+    mut app_state: ResMut<State<AppState>>,
+    query: Query<&Interaction, (Changed<Interaction>, With<MenuButton>)>,
+) {
+    let clicked = query.iter().any(|interaction| match interaction {
+        Interaction::Clicked => true,
+        _ => false,
+    });
+
+    if clicked {
+        info!("exit");
+        app_state.set(AppState::MainMenu).unwrap();
+    }
+}
 
 fn color_button_clicked(
     interaction_query: Query<

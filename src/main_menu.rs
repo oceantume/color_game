@@ -98,6 +98,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                         },
                         ..default()
                     })
+                    .insert(PlayButton)
                     .with_children(|play_btn| {
                         play_btn
                             .spawn_bundle(TextBundle::from_section(
@@ -108,8 +109,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                                     color: Color::BLACK,
                                 },
                             ));
-                    })
-                    .insert(PlayButton);
+                    });
                     menu.spawn_bundle(ButtonBundle {
                         color: Color::NONE.into(),
                         style: Style {
@@ -140,7 +140,7 @@ fn teardown(mut commands: Commands, query: Query<Entity, With<MainMenu>>) {
 
 fn play(
     mut app_state: ResMut<State<AppState>>,
-    query: Query<&Interaction, With<PlayButton>>,
+    query: Query<&Interaction, (With<PlayButton>, Changed<Interaction>)>,
 ) {
     let clicked = query.iter().any(|interaction| match interaction {
         Interaction::Clicked => true,
