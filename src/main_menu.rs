@@ -85,6 +85,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .spawn_bundle(NodeBundle {
                     color: Color::NONE.into(),
                     style: Style {
+                        margin: UiRect {
+                            top: Val::Px(20.0),
+                            ..default()
+                        },
                         size: Size::new(Val::Auto, Val::Percent(100.0)),
                         flex_direction: FlexDirection::ColumnReverse,
                         //justify_content: JustifyContent::SpaceAround,
@@ -99,6 +103,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                         color: Color::NONE.into(),
                         style: Style {
                             padding: UiRect::all(Val::Px(10.0)),
+                            size: Size::new(
+                                Val::Undefined,
+                                Val::Px(10.0 + 35.0),
+                            ),
                             ..default()
                         },
                         ..default()
@@ -119,6 +127,11 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                         color: Color::NONE.into(),
                         style: Style {
                             padding: UiRect::all(Val::Px(10.0)),
+                            size: Size::new(
+                                Val::Undefined,
+                                Val::Px(10.0 + 35.0),
+                            ),
+                            justify_content: JustifyContent::Center,
                             ..default()
                         },
                         ..default()
@@ -126,7 +139,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     .insert(MenuItem)
                     .with_children(|play_btn| {
                         play_btn.spawn_bundle(TextBundle::from_section(
-                            "Play",
+                            "Options",
                             TextStyle {
                                 font: asset_server.load("edosz.ttf"),
                                 font_size: 30.0,
@@ -138,37 +151,28 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-// NOTE: This can't work because we need to get the button's text.
-// Text and Interaction are not on the same component.
 fn menu_item_hover(
-    btn_query: Query<
-        &Interaction,
-        (Changed<Interaction>, With<MenuItem>),
-    >,
-    mut text_query: Query<
-        (&Parent, &mut Text)
-    >
+    btn_query: Query<&Interaction, (Changed<Interaction>, With<MenuItem>)>,
+    mut text_query: Query<(&Parent, &mut Text)>,
 ) {
     for (parent, mut text) in text_query.iter_mut() {
         if let Ok(interaction) = btn_query.get(**parent) {
             match interaction {
                 Interaction::Clicked => (),
                 Interaction::Hovered => {
-                    text
-                        .sections
-                        .iter_mut()
-                        .for_each(|s| s.style.font_size = 35.0);
+                    text.sections.iter_mut().for_each(|s| {
+                        s.style.color = Color::WHITE.into();
+                        s.style.font_size = 35.0;
+                    });
                 }
                 Interaction::None => {
-                    text
-                        .sections
-                        .iter_mut()
-                        .for_each(|s| s.style.font_size = 30.0);
-                },
+                    text.sections.iter_mut().for_each(|s| {
+                        s.style.color = Color::BLACK.into();
+                        s.style.font_size = 30.0;
+                    });
+                }
             }
         }
-        
-
     }
 }
 
