@@ -6,23 +6,39 @@ pub(crate) struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(BoardState {
-            selected_colors: Vec::new(),
-        })
-        .add_system_set(
-            SystemSet::on_enter(AppState::InGame).with_system(setup),
-        )
-        .add_system_set(
-            SystemSet::on_exit(AppState::InGame).with_system(teardown),
-        )
-        .add_system_set(
-            SystemSet::on_update(AppState::InGame)
-                .with_system(exit_clicked)
-                .with_system(color_button_clicked)
-                .with_system(player_color_update),
-        );
+        app.add_event::<PrepareLevelEvent>()
+            .add_event::<StartLevelEvent>()
+            .add_system_set(
+                SystemSet::on_enter(AppState::InGame)
+                    .with_system(setup)
+                    .with_system(prepare_first_level),
+            )
+            .add_system_set(
+                SystemSet::on_exit(AppState::InGame).with_system(teardown),
+            )
+            .add_system_set(
+                SystemSet::on_update(AppState::InGame)
+                    .with_system(exit_clicked)
+                    .with_system(color_button_clicked)
+                    .with_system(player_color_update)
+                    .with_system(prepare_level),
+            );
     }
 }
+
+const PALETTE_DATA: [Color; 5] = [
+    Color::rgb(0.0, 0.0, 0.0),
+    Color::rgb(1.0, 0.0, 0.0),
+    Color::rgb(1.0, 1.0, 0.0),
+    Color::rgb(0.0, 0.0, 1.0),
+    Color::rgb(1.0, 1.0, 1.0),
+];
+
+// TODO: add more objectives.
+// TODO: generate randomized objectives with increasing difficulty.
+const OBJECTIVES_DATA: [&'static [Color]; 1] =
+    [&[PALETTE_DATA[3], PALETTE_DATA[4]]];
+
 #[derive(Component)]
 struct GameUIRoot;
 
@@ -30,13 +46,33 @@ struct GameUIRoot;
 struct MenuButton;
 
 #[derive(Component)]
-struct TargetColor;
+struct ObjectiveColor;
 
 #[derive(Component)]
 struct PlayerColor;
 
-struct BoardState {
-    selected_colors: Vec<Color>,
+struct LevelState {
+    pub level_index: u32,
+    pub selected_colors: Vec<Color>,
+    pub objective_colors: Vec<Color>,
+}
+
+impl LevelState {
+    pub fn new(level_index: u32) -> Self {
+        Self {
+            level_index,
+            selected_colors: default(),
+            objective_colors: Self::prepare_objective(level_index),
+        }
+    }
+
+    fn prepare_objective(level_index: u32) -> Vec<Color> {
+        if level_index > OBJECTIVES_DATA.len() as u32 {
+            panic!("Reached the end of objectives");
+        }
+
+        OBJECTIVES_DATA[level_index as usize].into()
+    }
 }
 
 #[derive(Component)]
@@ -82,10 +118,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 ),
                                 ..default()
                             },
-                            color: Color::YELLOW.into(),
+                            color: Color::NONE.into(),
                             ..default()
                         })
-                        .insert(TargetColor);
+                        .insert(ObjectiveColor);
 
                     top_bar
                         .spawn_bundle(NodeBundle {
@@ -96,7 +132,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 ),
                                 ..default()
                             },
-                            color: Color::CYAN.into(),
+                            color: Color::NONE.into(),
                             ..default()
                         })
                         .insert(PlayerColor);
@@ -117,69 +153,27 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ..default()
                 })
                 .with_children(|bottom_bar| {
-                    bottom_bar
-                        .spawn_bundle(ButtonBundle {
-                            style: Style {
-                                max_size: Size::new(
-                                    Val::Px(200.0),
-                                    Val::Undefined,
-                                ),
-                                size: Size::new(
-                                    Val::Percent(20.0),
-                                    Val::Percent(80.0),
-                                ),
+                    PALETTE_DATA.iter().for_each(|color| {
+                        bottom_bar
+                            .spawn_bundle(ButtonBundle {
+                                style: Style {
+                                    max_size: Size::new(
+                                        Val::Px(200.0),
+                                        Val::Undefined,
+                                    ),
+                                    size: Size::new(
+                                        Val::Percent(20.0),
+                                        Val::Percent(80.0),
+                                    ),
+                                    ..default()
+                                },
+                                color: (*color).into(),
                                 ..default()
-                            },
-                            //color: Color::RED.into(),
-                            color: Color::rgb(1.0, 0.0, 1.0).into(),
-                            ..default()
-                        })
-                        .insert(ColorSelector {
-                            //color: Color::rgb(1.0, 0.0, 0.0)
-                            color: Color::rgb(1.0, 0.0, 1.0).into(),
-                        });
-                    bottom_bar
-                        .spawn_bundle(ButtonBundle {
-                            style: Style {
-                                max_size: Size::new(
-                                    Val::Px(200.0),
-                                    Val::Undefined,
-                                ),
-                                size: Size::new(
-                                    Val::Percent(20.0),
-                                    Val::Percent(80.0),
-                                ),
-                                ..default()
-                            },
-                            //color: Color::GREEN.into(),
-                            color: Color::YELLOW.into(),
-                            ..default()
-                        })
-                        .insert(ColorSelector {
-                            //color: Color::rgb(0.0, 1.0, 0.0)
-                            color: Color::YELLOW.into(),
-                        });
-                    bottom_bar
-                        .spawn_bundle(ButtonBundle {
-                            style: Style {
-                                max_size: Size::new(
-                                    Val::Px(200.0),
-                                    Val::Undefined,
-                                ),
-                                size: Size::new(
-                                    Val::Percent(20.0),
-                                    Val::Percent(80.0),
-                                ),
-                                ..default()
-                            },
-                            //color: Color::BLUE.into(),
-                            color: Color::CYAN.into(),
-                            ..default()
-                        })
-                        .insert(ColorSelector {
-                            //color: Color::rgb(0.0, 0.0, 1.0)
-                            color: Color::CYAN.into(),
-                        });
+                            })
+                            .insert(ColorSelector {
+                                color: (*color).into(),
+                            });
+                    });
                 });
 
             main_container
@@ -206,6 +200,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn teardown(mut commands: Commands, query: Query<Entity, With<GameUIRoot>>) {
+    commands.remove_resource::<LevelState>();
     for entity in query.iter() {
         commands.entity(entity).despawn_recursive();
     }
@@ -221,7 +216,6 @@ fn exit_clicked(
     });
 
     if clicked {
-        info!("exit");
         app_state.set(AppState::MainMenu).unwrap();
     }
 }
@@ -231,27 +225,55 @@ fn color_button_clicked(
         (&Interaction, &ColorSelector),
         (Changed<Interaction>, With<Button>),
     >,
-    mut board: ResMut<BoardState>,
+    mut board: Option<ResMut<LevelState>>,
 ) {
-    for (interaction, color_selection) in &interaction_query {
-        match *interaction {
-            Interaction::Clicked => {
-                board.selected_colors.push(color_selection.color);
+    if let Some(board) = board.as_mut() {
+        for (interaction, color_selection) in &interaction_query {
+            match *interaction {
+                Interaction::Clicked => {
+                    board.selected_colors.push(color_selection.color);
+                }
+                _ => (),
             }
-            _ => (),
         }
     }
 }
 
 fn player_color_update(
     mut player_color_query: Query<&mut UiColor, With<PlayerColor>>,
-    board: Res<BoardState>,
+    level: Option<Res<LevelState>>,
 ) {
-    for mut ui_color in player_color_query.iter_mut() {
-        let new_color = mix_colors(&board.selected_colors);
-        if ui_color.0 != new_color {
-            info!("setting color {:?}", new_color);
-            ui_color.0 = new_color
+    if let Some(level) = level {
+        for mut ui_color in player_color_query.iter_mut() {
+            let new_color = mix_colors(&level.selected_colors);
+            if ui_color.0 != new_color {
+                info!("setting color {:?}", new_color);
+                ui_color.0 = new_color
+            }
         }
+    }
+}
+
+struct PrepareLevelEvent;
+struct StartLevelEvent(u32);
+
+fn prepare_first_level(mut events: EventWriter<PrepareLevelEvent>) {
+    events.send(PrepareLevelEvent);
+}
+
+fn prepare_level(
+    mut commands: Commands,
+    level: Option<Res<LevelState>>,
+    mut prepare_evr: EventReader<PrepareLevelEvent>,
+    mut start_evw: EventWriter<StartLevelEvent>,
+) {
+    for _ in prepare_evr.iter() {
+        let level_index =
+            level.as_ref().map_or(0, |level| level.level_index + 1);
+        let new_level = LevelState::new(level_index);
+        commands.insert_resource(new_level);
+
+        start_evw.send(StartLevelEvent(level_index));
+        debug!("Prepared level {}", level_index);
     }
 }
