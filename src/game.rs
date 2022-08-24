@@ -8,6 +8,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<PrepareLevelEvent>()
             .add_event::<StartLevelEvent>()
+            .add_event::<PlayerColorsChanged>()
             .add_system_set(
                 SystemSet::on_enter(AppState::InGame)
                     .with_system(setup)
@@ -26,10 +27,14 @@ impl Plugin for GamePlugin {
             )
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
+                    // NOTE: UI update needs to run before prepare_level because the resource
+                    // is inserted via command on the previous frame, and the event can be received
+                    // in the same frame.
                     .after("ui_update")
                     .with_system(exit_clicked)
                     .with_system(color_button_clicked)
-                    .with_system(prepare_level),
+                    .with_system(prepare_level)
+                    .with_system(check_level_success),
             );
     }
 }
@@ -49,7 +54,15 @@ const PALETTE_DATA: [Color; 5] = [
 
 // TODO: add more objectives.
 // TODO: generate randomized objectives with increasing difficulty.
-const OBJECTIVES_DATA: [&'static [Color]; 1] = [&[PALETTE_BLUE, PALETTE_BLACK]];
+const OBJECTIVES_DATA: [&'static [Color]; 7] = [
+    &[PALETTE_BLUE, PALETTE_BLACK],
+    &[PALETTE_RED, PALETTE_YELLOW],
+    &[PALETTE_BLUE, PALETTE_BLACK],
+    &[PALETTE_RED, PALETTE_WHITE],
+    &[PALETTE_YELLOW, PALETTE_BLUE, PALETTE_WHITE],
+    &[PALETTE_RED, PALETTE_BLUE, PALETTE_WHITE],
+    &[PALETTE_YELLOW, PALETTE_BLACK, PALETTE_BLACK],
+];
 
 #[derive(Component)]
 struct GameUIRoot;
@@ -315,12 +328,14 @@ fn color_button_clicked(
         (Changed<Interaction>, With<Button>),
     >,
     mut board: Option<ResMut<LevelState>>,
+    mut evw: EventWriter<PlayerColorsChanged>,
 ) {
     if let Some(board) = board.as_mut() {
         for (interaction, color_selection) in &interaction_query {
             match *interaction {
                 Interaction::Clicked => {
                     board.selected_colors.push(color_selection.color);
+                    evw.send(PlayerColorsChanged);
                 }
                 _ => (),
             }
@@ -388,6 +403,7 @@ fn update_selected_colors_text(
 
 struct PrepareLevelEvent;
 struct StartLevelEvent(u32);
+struct PlayerColorsChanged;
 
 fn prepare_first_level(mut events: EventWriter<PrepareLevelEvent>) {
     events.send(PrepareLevelEvent);
@@ -407,5 +423,23 @@ fn prepare_level(
 
         start_evw.send(StartLevelEvent(level_index));
         debug!("Prepared level {}", level_index);
+    }
+}
+
+fn check_level_success(
+    level: Option<ResMut<LevelState>>,
+    mut evr: EventReader<PlayerColorsChanged>,
+    mut evw: EventWriter<PrepareLevelEvent>,
+) {
+    for _ in evr.iter() {
+        if let Some(ref level) = level {
+            let player_color = mix_colors(&level.selected_colors);
+            let objective_color = mix_colors(&level.objective_colors);
+
+            if player_color == objective_color {
+                // prepare next level.
+                evw.send(PrepareLevelEvent);
+            }
+        }
     }
 }
