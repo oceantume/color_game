@@ -18,26 +18,38 @@ impl Plugin for GamePlugin {
             )
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
+                    .label("ui_update")
+                    .with_system(player_color_update)
+                    .with_system(update_objective_color)
+                    .with_system(update_complexity_level_text)
+                    .with_system(update_selected_colors_text),
+            )
+            .add_system_set(
+                SystemSet::on_update(AppState::InGame)
+                    .after("ui_update")
                     .with_system(exit_clicked)
                     .with_system(color_button_clicked)
-                    .with_system(player_color_update)
                     .with_system(prepare_level),
             );
     }
 }
+const PALETTE_WHITE: Color = Color::rgb(0.0, 0.0, 0.0);
+const PALETTE_RED: Color = Color::rgb(1.0, 0.0, 0.0);
+const PALETTE_YELLOW: Color = Color::rgb(1.0, 1.0, 0.0);
+const PALETTE_BLUE: Color = Color::rgb(0.0, 0.0, 1.0);
+const PALETTE_BLACK: Color = Color::rgb(1.0, 1.0, 1.0);
 
 const PALETTE_DATA: [Color; 5] = [
-    Color::rgb(0.0, 0.0, 0.0),
-    Color::rgb(1.0, 0.0, 0.0),
-    Color::rgb(1.0, 1.0, 0.0),
-    Color::rgb(0.0, 0.0, 1.0),
-    Color::rgb(1.0, 1.0, 1.0),
+    PALETTE_WHITE,
+    PALETTE_RED,
+    PALETTE_YELLOW,
+    PALETTE_BLUE,
+    PALETTE_BLACK,
 ];
 
 // TODO: add more objectives.
 // TODO: generate randomized objectives with increasing difficulty.
-const OBJECTIVES_DATA: [&'static [Color]; 1] =
-    [&[PALETTE_DATA[3], PALETTE_DATA[4]]];
+const OBJECTIVES_DATA: [&'static [Color]; 1] = [&[PALETTE_BLUE, PALETTE_BLACK]];
 
 #[derive(Component)]
 struct GameUIRoot;
@@ -50,6 +62,12 @@ struct ObjectiveColor;
 
 #[derive(Component)]
 struct PlayerColor;
+
+#[derive(Component)]
+struct ComplexityLevelText;
+
+#[derive(Component)]
+struct SelectedColorsText;
 
 struct LevelState {
     pub level_index: u32,
@@ -136,6 +154,77 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                             ..default()
                         })
                         .insert(PlayerColor);
+                });
+
+            main_container
+                .spawn_bundle(NodeBundle {
+                    color: Color::NONE.into(),
+                    style: Style {
+                        justify_content: JustifyContent::SpaceAround,
+                        align_content: AlignContent::Center,
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|middle_container| {
+                    middle_container
+                        .spawn_bundle(NodeBundle {
+                            color: Color::NONE.into(),
+                            ..default()
+                        })
+                        .with_children(|container| {
+                            container
+                                .spawn_bundle(TextBundle::from_sections([
+                                    TextSection {
+                                        value: "Complexity level: ".into(),
+                                        style: TextStyle {
+                                            font: asset_server
+                                                .load("edosz.ttf"),
+                                            font_size: 24.0,
+                                            color: Color::BLACK,
+                                        },
+                                    },
+                                    TextSection {
+                                        value: "".into(),
+                                        style: TextStyle {
+                                            font: asset_server
+                                                .load("edosz.ttf"),
+                                            font_size: 30.0,
+                                            color: Color::BLACK,
+                                        },
+                                    },
+                                ]))
+                                .insert(ComplexityLevelText);
+                        });
+                    middle_container
+                        .spawn_bundle(NodeBundle {
+                            color: Color::NONE.into(),
+                            ..default()
+                        })
+                        .with_children(|container| {
+                            container
+                                .spawn_bundle(TextBundle::from_sections([
+                                    TextSection {
+                                        value: "Selected colors: ".into(),
+                                        style: TextStyle {
+                                            font: asset_server
+                                                .load("edosz.ttf"),
+                                            font_size: 24.0,
+                                            color: Color::BLACK,
+                                        },
+                                    },
+                                    TextSection {
+                                        value: "".into(),
+                                        style: TextStyle {
+                                            font: asset_server
+                                                .load("edosz.ttf"),
+                                            font_size: 30.0,
+                                            color: Color::BLACK,
+                                        },
+                                    },
+                                ]))
+                                .insert(SelectedColorsText);
+                        });
                 });
 
             main_container
@@ -249,6 +338,49 @@ fn player_color_update(
             if ui_color.0 != new_color {
                 info!("setting color {:?}", new_color);
                 ui_color.0 = new_color
+            }
+        }
+    }
+}
+
+fn update_objective_color(
+    level: Option<Res<LevelState>>,
+    mut start_evr: EventReader<StartLevelEvent>,
+    mut query: Query<&mut UiColor, With<ObjectiveColor>>,
+) {
+    for _ in start_evr.iter() {
+        if let Some(ref level) = level {
+            let new_color = mix_colors(&level.objective_colors);
+            for mut color in query.iter_mut() {
+                color.0 = new_color;
+            }
+        }
+    }
+}
+
+fn update_complexity_level_text(
+    mut text_query: Query<&mut Text, With<ComplexityLevelText>>,
+    level: Option<Res<LevelState>>,
+) {
+    if let Some(level) = level {
+        for mut text in text_query.iter_mut() {
+            let new_value = level.objective_colors.len().to_string();
+            if text.sections[1].value != new_value {
+                text.sections[1].value = new_value;
+            }
+        }
+    }
+}
+
+fn update_selected_colors_text(
+    mut text_query: Query<&mut Text, With<SelectedColorsText>>,
+    level: Option<Res<LevelState>>,
+) {
+    if let Some(level) = level {
+        for mut text in text_query.iter_mut() {
+            let new_value = level.selected_colors.len().to_string();
+            if text.sections[1].value != new_value {
+                text.sections[1].value = new_value;
             }
         }
     }
