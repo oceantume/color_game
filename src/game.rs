@@ -6,7 +6,8 @@ pub(crate) struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<PrepareLevelEvent>()
+        app.add_event::<ResetLevelEvent>()
+            .add_event::<PrepareLevelEvent>()
             .add_event::<StartLevelEvent>()
             .add_event::<PlayerColorsChanged>()
             .add_system_set(
@@ -34,7 +35,8 @@ impl Plugin for GamePlugin {
                     .with_system(exit_clicked)
                     .with_system(color_button_clicked)
                     .with_system(prepare_level)
-                    .with_system(check_level_success),
+                    .with_system(reset_level)
+                    .with_system(check_level_finished),
             );
     }
 }
@@ -95,6 +97,10 @@ impl LevelState {
             selected_colors: default(),
             objective_colors: Self::prepare_objective(level_index),
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.selected_colors.clear();
     }
 
     fn prepare_objective(level_index: u32) -> Vec<Color> {
@@ -402,6 +408,7 @@ fn update_selected_colors_text(
 }
 
 struct PrepareLevelEvent;
+struct ResetLevelEvent;
 struct StartLevelEvent(u32);
 struct PlayerColorsChanged;
 
@@ -426,20 +433,38 @@ fn prepare_level(
     }
 }
 
-fn check_level_success(
+fn reset_level(
+    mut level: Option<ResMut<LevelState>>,
+    mut evr: EventReader<ResetLevelEvent>,
+) {
+    if evr.iter().count() < 1 {
+        return;
+    }
+    
+    if let Some(ref mut level) = level {
+        level.reset();
+    }
+}
+
+fn check_level_finished(
     level: Option<ResMut<LevelState>>,
     mut evr: EventReader<PlayerColorsChanged>,
-    mut evw: EventWriter<PrepareLevelEvent>,
+    mut prepare_evw: EventWriter<PrepareLevelEvent>,
+    mut reset_evw: EventWriter<ResetLevelEvent>,
 ) {
-    for _ in evr.iter() {
-        if let Some(ref level) = level {
-            let player_color = mix_colors(&level.selected_colors);
-            let objective_color = mix_colors(&level.objective_colors);
+    if evr.iter().count() < 1 {
+        return;
+    }
 
-            if player_color == objective_color {
-                // prepare next level.
-                evw.send(PrepareLevelEvent);
-            }
+    if let Some(ref level) = level {
+        let player_color = mix_colors(&level.selected_colors);
+        let objective_color = mix_colors(&level.objective_colors);
+
+        if player_color == objective_color {
+            prepare_evw.send(PrepareLevelEvent);
+        } else if level.selected_colors.len() >= level.objective_colors.len() {
+            // todo: send a level failure event instead and let that be handled.
+            reset_evw.send(ResetLevelEvent);
         }
     }
 }
