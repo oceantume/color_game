@@ -10,6 +10,8 @@ impl Plugin for GamePlugin {
             .add_event::<PrepareLevelEvent>()
             .add_event::<StartLevelEvent>()
             .add_event::<PlayerColorsChanged>()
+            .add_event::<LevelFailedEvent>()
+            .add_event::<GameOverEvent>()
             .add_system_set(
                 SystemSet::on_enter(AppState::InGame)
                     .with_system(setup)
@@ -24,7 +26,8 @@ impl Plugin for GamePlugin {
                     .with_system(player_color_update)
                     .with_system(update_objective_color)
                     .with_system(update_complexity_level_text)
-                    .with_system(update_selected_colors_text),
+                    .with_system(update_selected_colors_text)
+                    .with_system(update_remaining_lives_indicator),
             )
             .add_system_set(
                 SystemSet::on_update(AppState::InGame)
@@ -36,15 +39,19 @@ impl Plugin for GamePlugin {
                     .with_system(color_button_clicked)
                     .with_system(prepare_level)
                     .with_system(reset_level)
-                    .with_system(check_level_finished),
+                    .with_system(check_level_finished)
+                    .with_system(check_game_over)
+                    .with_system(show_game_over)
+                    .with_system(update_remaining_lives)
+                    .with_system(show_level_failed),
             );
     }
 }
-const PALETTE_WHITE: Color = Color::rgb(0.0, 0.0, 0.0);
+const PALETTE_WHITE: Color = Color::rgb(1.0, 1.0, 1.0);
 const PALETTE_RED: Color = Color::rgb(1.0, 0.0, 0.0);
 const PALETTE_YELLOW: Color = Color::rgb(1.0, 1.0, 0.0);
 const PALETTE_BLUE: Color = Color::rgb(0.0, 0.0, 1.0);
-const PALETTE_BLACK: Color = Color::rgb(1.0, 1.0, 1.0);
+const PALETTE_BLACK: Color = Color::rgb(0.0, 0.0, 0.0);
 
 const PALETTE_DATA: [Color; 5] = [
     PALETTE_WHITE,
@@ -56,14 +63,18 @@ const PALETTE_DATA: [Color; 5] = [
 
 // TODO: add more objectives.
 // TODO: generate randomized objectives with increasing difficulty.
-const OBJECTIVES_DATA: [&'static [Color]; 7] = [
-    &[PALETTE_BLUE, PALETTE_BLACK],
+const OBJECTIVES_DATA: [&'static [Color]; 11] = [
+    &[PALETTE_BLUE, PALETTE_YELLOW],
+    &[PALETTE_BLACK, PALETTE_YELLOW],
     &[PALETTE_RED, PALETTE_YELLOW],
-    &[PALETTE_BLUE, PALETTE_BLACK],
+    &[PALETTE_BLUE, PALETTE_WHITE],
     &[PALETTE_RED, PALETTE_WHITE],
+    &[PALETTE_RED, PALETTE_YELLOW, PALETTE_YELLOW],
     &[PALETTE_YELLOW, PALETTE_BLUE, PALETTE_WHITE],
     &[PALETTE_RED, PALETTE_BLUE, PALETTE_WHITE],
     &[PALETTE_YELLOW, PALETTE_BLACK, PALETTE_BLACK],
+    &[PALETTE_RED, PALETTE_RED, PALETTE_YELLOW, PALETTE_WHITE],
+    &[PALETTE_RED, PALETTE_BLUE, PALETTE_YELLOW, PALETTE_BLACK],
 ];
 
 #[derive(Component)]
@@ -83,6 +94,13 @@ struct ComplexityLevelText;
 
 #[derive(Component)]
 struct SelectedColorsText;
+
+#[derive(Component)]
+struct RemainingLivesIndicator;
+
+struct GameState {
+    pub lives_remaining: u32,
+}
 
 struct LevelState {
     pub level_index: u32,
@@ -118,6 +136,7 @@ struct ColorSelector {
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.insert_resource(GameState { lives_remaining: 5 });
     commands
         .spawn_bundle(NodeBundle {
             style: Style {
@@ -133,6 +152,52 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         .with_children(|main_container| {
             main_container
                 .spawn_bundle(NodeBundle {
+                    color: Color::NONE.into(),
+                    style: Style {
+                        justify_content: JustifyContent::SpaceBetween,
+                        align_content: AlignContent::Center,
+                        margin: UiRect {
+                            bottom: Val::Px(5.0),
+                            ..default()
+                        },
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_children(|top_section| {
+                    top_section
+                        .spawn_bundle(NodeBundle {
+                            color: Color::NONE.into(),
+                            ..default()
+                        })
+                        .with_children(|indicator_container| {
+                            indicator_container
+                                .spawn_bundle(TextBundle::from_sections([
+                                    TextSection {
+                                        value: "Remaining lives: ".into(),
+                                        style: TextStyle {
+                                            font: asset_server
+                                                .load("edosz.ttf"),
+                                            font_size: 24.0,
+                                            color: Color::BLACK,
+                                        },
+                                    },
+                                    TextSection {
+                                        value: "XXXXX".into(),
+                                        style: TextStyle {
+                                            font: asset_server
+                                                .load("edosz.ttf"),
+                                            font_size: 30.0,
+                                            color: Color::BLACK,
+                                        },
+                                    },
+                                ]))
+                                .insert(RemainingLivesIndicator);
+                        });
+                });
+
+            main_container
+                .spawn_bundle(NodeBundle {
                     style: Style {
                         size: Size::new(
                             Val::Percent(100.0),
@@ -145,8 +210,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     color: Color::NONE.into(),
                     ..default()
                 })
-                .with_children(|top_bar| {
-                    top_bar
+                .with_children(|board_section| {
+                    board_section
                         .spawn_bundle(NodeBundle {
                             style: Style {
                                 size: Size::new(
@@ -160,7 +225,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                         })
                         .insert(ObjectiveColor);
 
-                    top_bar
+                    board_section
                         .spawn_bundle(NodeBundle {
                             style: Style {
                                 size: Size::new(
@@ -260,9 +325,9 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     color: Color::NONE.into(),
                     ..default()
                 })
-                .with_children(|bottom_bar| {
+                .with_children(|bottom_section| {
                     PALETTE_DATA.iter().for_each(|color| {
-                        bottom_bar
+                        bottom_section
                             .spawn_bundle(ButtonBundle {
                                 style: Style {
                                     max_size: Size::new(
@@ -407,10 +472,27 @@ fn update_selected_colors_text(
     }
 }
 
+fn update_remaining_lives_indicator(
+    game: Res<GameState>,
+    mut query: Query<&mut Text, With<RemainingLivesIndicator>>,
+) {
+    if game.is_changed() {
+        for mut text in query.iter_mut() {
+            let lives_text =
+                (0..game.lives_remaining).fold(String::new(), |s, _| s + "X");
+            if text.sections[1].value != lives_text {
+                text.sections[1].value = lives_text;
+            }
+        }
+    }
+}
+
 struct PrepareLevelEvent;
 struct ResetLevelEvent;
 struct StartLevelEvent(u32);
 struct PlayerColorsChanged;
+struct LevelFailedEvent;
+struct GameOverEvent;
 
 fn prepare_first_level(mut events: EventWriter<PrepareLevelEvent>) {
     events.send(PrepareLevelEvent);
@@ -440,7 +522,7 @@ fn reset_level(
     if evr.iter().count() < 1 {
         return;
     }
-    
+
     if let Some(ref mut level) = level {
         level.reset();
     }
@@ -450,7 +532,7 @@ fn check_level_finished(
     level: Option<ResMut<LevelState>>,
     mut evr: EventReader<PlayerColorsChanged>,
     mut prepare_evw: EventWriter<PrepareLevelEvent>,
-    mut reset_evw: EventWriter<ResetLevelEvent>,
+    mut failed_evw: EventWriter<LevelFailedEvent>,
 ) {
     if evr.iter().count() < 1 {
         return;
@@ -461,10 +543,49 @@ fn check_level_finished(
         let objective_color = mix_colors(&level.objective_colors);
 
         if player_color == objective_color {
+            // todo: send a level success event instead so we can show the success.
             prepare_evw.send(PrepareLevelEvent);
         } else if level.selected_colors.len() >= level.objective_colors.len() {
-            // todo: send a level failure event instead and let that be handled.
-            reset_evw.send(ResetLevelEvent);
+            // todo: send a level failure event instead so we can show the failure.
+            failed_evw.send(LevelFailedEvent);
         }
+    }
+}
+
+fn show_level_failed(
+    mut failed_evr: EventReader<LevelFailedEvent>,
+    mut reset_evw: EventWriter<ResetLevelEvent>,
+) {
+    if failed_evr.iter().count() > 0 {
+        // todo: show level failed on UI before resetting
+        reset_evw.send(ResetLevelEvent);
+    }
+}
+
+fn update_remaining_lives(
+    mut game: ResMut<GameState>,
+    mut evr: EventReader<LevelFailedEvent>,
+) {
+    for _ in evr.iter() {
+        game.lives_remaining -= 1;
+    }
+}
+
+fn check_game_over(
+    game: ResMut<GameState>,
+    mut evw: EventWriter<GameOverEvent>,
+) {
+    if game.lives_remaining == 0 {
+        evw.send(GameOverEvent);
+    }
+}
+
+fn show_game_over(
+    mut evr: EventReader<GameOverEvent>,
+    mut app_state: ResMut<State<AppState>>,
+) {
+    if evr.iter().count() > 0 {
+        // todo: show game over popup before leaving to main menu
+        app_state.set(AppState::MainMenu).unwrap();
     }
 }
