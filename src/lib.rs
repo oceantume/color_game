@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 mod color_mixer;
 mod main_menu;
+mod game_ui;
 mod game;
 
 pub const LAUNCHER_TITLE: &str = "Guess Hue?";
@@ -22,6 +23,7 @@ pub fn app() -> App {
     })
     .add_plugins(DefaultPlugins)
     .add_plugin(main_menu::MainMenuPlugin)
+    .add_plugin(game_ui::GameUiPlugin)
     .add_plugin(game::GamePlugin)
     .add_state(AppState::MainMenu)
     .add_startup_system(setup);
