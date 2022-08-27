@@ -1,5 +1,9 @@
 use bevy::prelude::*;
 
+use crate::widgets::{
+    spawn_game_button, spawn_game_indicator, GameButton, GameButtonLabel,
+    GameIndicator, GameIndicatorLabel,
+};
 use crate::{color_mixer::mix_colors, AppState};
 
 use crate::game::{
@@ -20,13 +24,15 @@ impl Plugin for GameUiPlugin {
         .add_system_set(
             SystemSet::on_update(AppState::InGame)
                 .label("ui_update")
+                .before(GameButtonLabel)
+                .before(GameIndicatorLabel)
                 .with_system(handle_exit_clicked)
                 .with_system(update_player_color)
                 .with_system(update_objective_color)
-                .with_system(update_complexity_level_text)
-                .with_system(update_selected_colors_text)
-                .with_system(update_current_level_indicator)
-                .with_system(update_remaining_lives_indicator)
+                .with_system(update_complexity_indicator)
+                .with_system(update_selection_indicator)
+                .with_system(update_level_indicator)
+                .with_system(update_lives_indicator)
                 .with_system(handle_color_clicked),
         );
     }
@@ -45,18 +51,71 @@ struct ObjectiveColor;
 struct PlayerColor;
 
 #[derive(Component)]
-struct ComplexityLevelText;
+struct ComplexityIndicator;
 
 #[derive(Component)]
-struct SelectedColorsText;
+struct SelectionIndicator;
 
 #[derive(Component)]
-struct CurrentLevelIndicator;
+struct LevelIndicator;
 
 #[derive(Component)]
-struct RemainingLivesIndicator;
+struct LivesIndicator;
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let menu_button = spawn_game_button(
+        &mut commands,
+        &asset_server,
+        GameButton {
+            text: "Menu".into(),
+        },
+    );
+    commands.entity(menu_button).insert(MenuButton);
+
+    let level_indicator = spawn_game_indicator(
+        &mut commands,
+        &asset_server,
+        GameIndicator {
+            label: "Level".into(),
+            value: "1".into(),
+        },
+    );
+    commands.entity(level_indicator).insert(LevelIndicator);
+
+    let lives_indicator = spawn_game_indicator(
+        &mut commands,
+        &asset_server,
+        GameIndicator {
+            label: "Lives".into(),
+            value: "XXXXX".into(),
+        },
+    );
+    commands.entity(lives_indicator).insert(LivesIndicator);
+
+    let complexity_indicator = spawn_game_indicator(
+        &mut commands,
+        &asset_server,
+        GameIndicator {
+            label: "Level complexity".into(),
+            value: "2".into(),
+        },
+    );
+    commands
+        .entity(complexity_indicator)
+        .insert(ComplexityIndicator);
+
+    let selection_indicator = spawn_game_indicator(
+        &mut commands,
+        &asset_server,
+        GameIndicator {
+            label: "Selected colors".into(),
+            value: "1".into(),
+        },
+    );
+    commands
+        .entity(selection_indicator)
+        .insert(SelectionIndicator);
+
     commands
         .spawn_bundle(NodeBundle {
             style: Style {
@@ -84,67 +143,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     },
                     ..default()
                 })
-                .with_children(|top_section| {
-                    top_section
-                        .spawn_bundle(NodeBundle {
-                            color: Color::NONE.into(),
-                            ..default()
-                        })
-                        .with_children(|indicator_container| {
-                            indicator_container
-                                .spawn_bundle(TextBundle::from_sections([
-                                    TextSection {
-                                        value: "Current level: ".into(),
-                                        style: TextStyle {
-                                            font: asset_server
-                                                .load("edosz.ttf"),
-                                            font_size: 24.0,
-                                            color: Color::BLACK,
-                                        },
-                                    },
-                                    TextSection {
-                                        value: "1".into(),
-                                        style: TextStyle {
-                                            font: asset_server
-                                                .load("edosz.ttf"),
-                                            font_size: 30.0,
-                                            color: Color::BLACK,
-                                        },
-                                    },
-                                ]))
-                                .insert(CurrentLevelIndicator);
-                        });
-
-                    top_section
-                        .spawn_bundle(NodeBundle {
-                            color: Color::NONE.into(),
-                            ..default()
-                        })
-                        .with_children(|indicator_container| {
-                            indicator_container
-                                .spawn_bundle(TextBundle::from_sections([
-                                    TextSection {
-                                        value: "Remaining lives: ".into(),
-                                        style: TextStyle {
-                                            font: asset_server
-                                                .load("edosz.ttf"),
-                                            font_size: 24.0,
-                                            color: Color::BLACK,
-                                        },
-                                    },
-                                    TextSection {
-                                        value: "XXXXX".into(),
-                                        style: TextStyle {
-                                            font: asset_server
-                                                .load("edosz.ttf"),
-                                            font_size: 30.0,
-                                            color: Color::BLACK,
-                                        },
-                                    },
-                                ]))
-                                .insert(RemainingLivesIndicator);
-                        });
-                });
+                .add_child(level_indicator)
+                .add_child(lives_indicator);
 
             main_container
                 .spawn_bundle(NodeBundle {
@@ -200,66 +200,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     },
                     ..default()
                 })
-                .with_children(|middle_container| {
-                    middle_container
-                        .spawn_bundle(NodeBundle {
-                            color: Color::NONE.into(),
-                            ..default()
-                        })
-                        .with_children(|container| {
-                            container
-                                .spawn_bundle(TextBundle::from_sections([
-                                    TextSection {
-                                        value: "Complexity level: ".into(),
-                                        style: TextStyle {
-                                            font: asset_server
-                                                .load("edosz.ttf"),
-                                            font_size: 24.0,
-                                            color: Color::BLACK,
-                                        },
-                                    },
-                                    TextSection {
-                                        value: "".into(),
-                                        style: TextStyle {
-                                            font: asset_server
-                                                .load("edosz.ttf"),
-                                            font_size: 30.0,
-                                            color: Color::BLACK,
-                                        },
-                                    },
-                                ]))
-                                .insert(ComplexityLevelText);
-                        });
-                    middle_container
-                        .spawn_bundle(NodeBundle {
-                            color: Color::NONE.into(),
-                            ..default()
-                        })
-                        .with_children(|container| {
-                            container
-                                .spawn_bundle(TextBundle::from_sections([
-                                    TextSection {
-                                        value: "Selected colors: ".into(),
-                                        style: TextStyle {
-                                            font: asset_server
-                                                .load("edosz.ttf"),
-                                            font_size: 24.0,
-                                            color: Color::BLACK,
-                                        },
-                                    },
-                                    TextSection {
-                                        value: "".into(),
-                                        style: TextStyle {
-                                            font: asset_server
-                                                .load("edosz.ttf"),
-                                            font_size: 30.0,
-                                            color: Color::BLACK,
-                                        },
-                                    },
-                                ]))
-                                .insert(SelectedColorsText);
-                        });
-                });
+                .add_child(complexity_indicator)
+                .add_child(selection_indicator);
 
             main_container
                 .spawn_bundle(NodeBundle {
@@ -298,28 +240,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                             });
                     });
                 });
-
-            main_container
-                .spawn_bundle(ButtonBundle {
-                    color: Color::NONE.into(),
-                    style: Style {
-                        position_type: PositionType::Absolute,
-                        ..default()
-                    },
-                    ..default()
-                })
-                .insert(MenuButton)
-                .with_children(|btn| {
-                    btn.spawn_bundle(TextBundle::from_section(
-                        "Menu",
-                        TextStyle {
-                            font: asset_server.load("edosz.ttf"),
-                            font_size: 30.0,
-                            color: Color::BLACK,
-                        },
-                    ));
-                });
-        });
+        })
+        .add_child(menu_button);
 }
 
 fn teardown(mut commands: Commands, query: Query<Entity, With<GameUIRoot>>) {
@@ -396,59 +318,59 @@ fn update_objective_color(
     }
 }
 
-fn update_complexity_level_text(
-    mut text_query: Query<&mut Text, With<ComplexityLevelText>>,
+fn update_complexity_indicator(
+    mut query: Query<&mut GameIndicator, With<ComplexityIndicator>>,
     level: Option<Res<LevelState>>,
 ) {
     if let Some(level) = level {
-        for mut text in text_query.iter_mut() {
+        for mut indicator in query.iter_mut() {
             let new_value = level.objective_colors.len().to_string();
-            if text.sections[1].value != new_value {
-                text.sections[1].value = new_value;
+            if indicator.value != new_value {
+                indicator.value = new_value;
             }
         }
     }
 }
 
-fn update_selected_colors_text(
-    mut text_query: Query<&mut Text, With<SelectedColorsText>>,
+fn update_selection_indicator(
+    mut query: Query<&mut GameIndicator, With<SelectionIndicator>>,
     level: Option<Res<LevelState>>,
 ) {
     if let Some(level) = level {
-        for mut text in text_query.iter_mut() {
+        for mut indicator in query.iter_mut() {
             let new_value = level.selected_colors.len().to_string();
-            if text.sections[1].value != new_value {
-                text.sections[1].value = new_value;
+            if indicator.value != new_value {
+                indicator.value = new_value;
             }
         }
     }
 }
 
-fn update_current_level_indicator(
-    mut text_query: Query<&mut Text, With<CurrentLevelIndicator>>,
+fn update_level_indicator(
+    mut query: Query<&mut GameIndicator, With<LevelIndicator>>,
     level: Option<Res<LevelState>>,
 ) {
-    for mut text in text_query.iter_mut() {
+    for mut indicator in query.iter_mut() {
         let level_text = level.as_ref().map_or("-".to_string(), |level| {
             (level.level_index + 1).to_string()
         });
 
-        if text.sections[1].value != level_text {
-            text.sections[1].value = level_text;
+        if indicator.value != level_text {
+            indicator.value = level_text;
         }
     }
 }
 
-fn update_remaining_lives_indicator(
+fn update_lives_indicator(
     game: Res<GameState>,
-    mut query: Query<&mut Text, With<RemainingLivesIndicator>>,
+    mut query: Query<&mut GameIndicator, With<LivesIndicator>>,
 ) {
     if game.is_changed() {
-        for mut text in query.iter_mut() {
+        for mut indicator in query.iter_mut() {
             let lives_text =
                 (0..game.lives_remaining).fold(String::new(), |s, _| s + "X");
-            if text.sections[1].value != lives_text {
-                text.sections[1].value = lives_text;
+            if indicator.value != lives_text {
+                indicator.value = lives_text;
             }
         }
     }
