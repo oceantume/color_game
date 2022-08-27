@@ -25,6 +25,7 @@ impl Plugin for GameUiPlugin {
                 .with_system(update_objective_color)
                 .with_system(update_complexity_level_text)
                 .with_system(update_selected_colors_text)
+                .with_system(update_current_level_indicator)
                 .with_system(update_remaining_lives_indicator)
                 .with_system(handle_color_clicked),
         );
@@ -48,6 +49,9 @@ struct ComplexityLevelText;
 
 #[derive(Component)]
 struct SelectedColorsText;
+
+#[derive(Component)]
+struct CurrentLevelIndicator;
 
 #[derive(Component)]
 struct RemainingLivesIndicator;
@@ -81,6 +85,36 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ..default()
                 })
                 .with_children(|top_section| {
+                    top_section
+                        .spawn_bundle(NodeBundle {
+                            color: Color::NONE.into(),
+                            ..default()
+                        })
+                        .with_children(|indicator_container| {
+                            indicator_container
+                                .spawn_bundle(TextBundle::from_sections([
+                                    TextSection {
+                                        value: "Current level: ".into(),
+                                        style: TextStyle {
+                                            font: asset_server
+                                                .load("edosz.ttf"),
+                                            font_size: 24.0,
+                                            color: Color::BLACK,
+                                        },
+                                    },
+                                    TextSection {
+                                        value: "1".into(),
+                                        style: TextStyle {
+                                            font: asset_server
+                                                .load("edosz.ttf"),
+                                            font_size: 30.0,
+                                            color: Color::BLACK,
+                                        },
+                                    },
+                                ]))
+                                .insert(CurrentLevelIndicator);
+                        });
+
                     top_section
                         .spawn_bundle(NodeBundle {
                             color: Color::NONE.into(),
@@ -386,6 +420,21 @@ fn update_selected_colors_text(
             if text.sections[1].value != new_value {
                 text.sections[1].value = new_value;
             }
+        }
+    }
+}
+
+fn update_current_level_indicator(
+    mut text_query: Query<&mut Text, With<CurrentLevelIndicator>>,
+    level: Option<Res<LevelState>>,
+) {
+    for mut text in text_query.iter_mut() {
+        let level_text = level.as_ref().map_or("-".to_string(), |level| {
+            (level.level_index + 1).to_string()
+        });
+
+        if text.sections[1].value != level_text {
+            text.sections[1].value = level_text;
         }
     }
 }
