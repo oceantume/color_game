@@ -4,6 +4,7 @@ mod color_mixer;
 mod main_menu;
 mod game_ui;
 mod game;
+mod widgets;
 
 pub const LAUNCHER_TITLE: &str = "Guess Hue?";
 
@@ -11,6 +12,9 @@ pub const LAUNCHER_TITLE: &str = "Guess Hue?";
 enum AppState {
     MainMenu,
     InGame,
+    LevelFailed,
+    LevelSucceeded,
+    GameOver,
 }
 
 pub fn app() -> App {
@@ -23,8 +27,9 @@ pub fn app() -> App {
     })
     .add_plugins(DefaultPlugins)
     .add_plugin(main_menu::MainMenuPlugin)
-    .add_plugin(game_ui::GameUiPlugin)
     .add_plugin(game::GamePlugin)
+    .add_plugin(game_ui::GameUiPlugin)
+    .add_plugin(widgets::GameButtonPlugin)
     .add_state(AppState::MainMenu)
     .add_startup_system(setup);
     app

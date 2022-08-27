@@ -1,8 +1,11 @@
 use bevy::prelude::*;
 
-use crate::AppState;
+use crate::{
+    widgets::{spawn_game_button, GameButton},
+    AppState,
+};
 
-pub(crate) struct MainMenuPlugin;
+pub struct MainMenuPlugin;
 
 impl Plugin for MainMenuPlugin {
     fn build(&self, app: &mut App) {
@@ -14,8 +17,7 @@ impl Plugin for MainMenuPlugin {
         )
         .add_system_set(
             SystemSet::on_update(AppState::MainMenu)
-                .with_system(play)
-                .with_system(menu_item_hover),
+                .with_system(play),
         );
     }
 }
@@ -30,6 +32,24 @@ struct MenuItem;
 struct PlayButton;
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let play_button = spawn_game_button(
+        &mut commands,
+        &asset_server,
+        GameButton {
+            text: "Play".into(),
+        },
+    );
+
+    commands.entity(play_button).insert(PlayButton);
+
+    let options_button = spawn_game_button(
+        &mut commands,
+        &asset_server,
+        GameButton {
+            text: "Options".into(),
+        },
+    );
+
     commands
         .spawn_bundle(NodeBundle {
             style: Style {
@@ -98,82 +118,9 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     },
                     ..default()
                 })
-                .with_children(|menu| {
-                    menu.spawn_bundle(ButtonBundle {
-                        color: Color::NONE.into(),
-                        style: Style {
-                            padding: UiRect::all(Val::Px(10.0)),
-                            size: Size::new(
-                                Val::Undefined,
-                                Val::Px(10.0 + 35.0),
-                            ),
-                            ..default()
-                        },
-                        ..default()
-                    })
-                    .insert(PlayButton)
-                    .insert(MenuItem)
-                    .with_children(|play_btn| {
-                        play_btn.spawn_bundle(TextBundle::from_section(
-                            "Play",
-                            TextStyle {
-                                font: asset_server.load("edosz.ttf"),
-                                font_size: 30.0,
-                                color: Color::BLACK,
-                            },
-                        ));
-                    });
-                    menu.spawn_bundle(ButtonBundle {
-                        color: Color::NONE.into(),
-                        style: Style {
-                            padding: UiRect::all(Val::Px(10.0)),
-                            size: Size::new(
-                                Val::Undefined,
-                                Val::Px(10.0 + 35.0),
-                            ),
-                            justify_content: JustifyContent::Center,
-                            ..default()
-                        },
-                        ..default()
-                    })
-                    .insert(MenuItem)
-                    .with_children(|play_btn| {
-                        play_btn.spawn_bundle(TextBundle::from_section(
-                            "Options",
-                            TextStyle {
-                                font: asset_server.load("edosz.ttf"),
-                                font_size: 30.0,
-                                color: Color::BLACK,
-                            },
-                        ));
-                    });
-                });
+                .add_child(play_button)
+                .add_child(options_button);
         });
-}
-
-fn menu_item_hover(
-    btn_query: Query<&Interaction, (Changed<Interaction>, With<MenuItem>)>,
-    mut text_query: Query<(&Parent, &mut Text)>,
-) {
-    for (parent, mut text) in text_query.iter_mut() {
-        if let Ok(interaction) = btn_query.get(**parent) {
-            match interaction {
-                Interaction::Clicked => (),
-                Interaction::Hovered => {
-                    text.sections.iter_mut().for_each(|s| {
-                        s.style.color = Color::WHITE.into();
-                        s.style.font_size = 35.0;
-                    });
-                }
-                Interaction::None => {
-                    text.sections.iter_mut().for_each(|s| {
-                        s.style.color = Color::BLACK.into();
-                        s.style.font_size = 30.0;
-                    });
-                }
-            }
-        }
-    }
 }
 
 fn teardown(mut commands: Commands, query: Query<Entity, With<MainMenu>>) {
