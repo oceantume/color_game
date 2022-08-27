@@ -20,13 +20,13 @@ impl Plugin for GameUiPlugin {
         .add_system_set(
             SystemSet::on_update(AppState::InGame)
                 .label("ui_update")
-                .with_system(exit_clicked)
-                .with_system(player_color_update)
+                .with_system(handle_exit_clicked)
+                .with_system(update_player_color)
                 .with_system(update_objective_color)
                 .with_system(update_complexity_level_text)
                 .with_system(update_selected_colors_text)
                 .with_system(update_remaining_lives_indicator)
-                .with_system(color_button_clicked),
+                .with_system(handle_color_clicked),
         );
     }
 }
@@ -294,7 +294,7 @@ fn teardown(mut commands: Commands, query: Query<Entity, With<GameUIRoot>>) {
     }
 }
 
-fn exit_clicked(
+fn handle_exit_clicked(
     mut app_state: ResMut<State<AppState>>,
     query: Query<&Interaction, (Changed<Interaction>, With<MenuButton>)>,
 ) {
@@ -308,7 +308,7 @@ fn exit_clicked(
     }
 }
 
-fn color_button_clicked(
+fn handle_color_clicked(
     interaction_query: Query<
         (&Interaction, &ColorSelector),
         (Changed<Interaction>, With<Button>),
@@ -329,15 +329,18 @@ fn color_button_clicked(
     }
 }
 
-fn player_color_update(
+fn update_player_color(
     mut player_color_query: Query<&mut UiColor, With<PlayerColor>>,
     level: Option<Res<LevelState>>,
 ) {
     if let Some(level) = level {
+        if !level.is_changed() {
+            return;
+        }
+
         for mut ui_color in player_color_query.iter_mut() {
             let new_color = mix_colors(&level.selected_colors);
             if ui_color.0 != new_color {
-                info!("setting color {:?}", new_color);
                 ui_color.0 = new_color
             }
         }
