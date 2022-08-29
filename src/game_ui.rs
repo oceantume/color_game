@@ -400,9 +400,7 @@ fn update_lives_indicator(
 ) {
     if game.is_changed() {
         for mut indicator in query.iter_mut() {
-            //let lives_text =
-            //    (0..game.lives_remaining).fold(String::new(), |s, _| s + "X");
-            let lives_text = format!("{}/{}", game.lives_remaining, 5);
+            let lives_text = format!("{}/{}", game.lives_remaining, 3);
             if indicator.value != lives_text {
                 indicator.value = lives_text;
             }
