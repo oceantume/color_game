@@ -75,7 +75,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &mut commands,
         &asset_server,
         GameButton {
-            text: "Menu".into(),
+            text: "Back to menu".into(),
         },
     );
     commands.entity(menu_button).insert(MenuButton);
@@ -248,15 +248,12 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     PALETTE_DATA.iter().for_each(|color| {
                         bottom_section
                             .spawn_bundle(ButtonBundle {
+                                image: asset_server.load("brush.png").into(),
                                 style: Style {
                                     display: Display::Flex,
-                                    max_size: Size::new(
-                                        Val::Px(200.0),
-                                        Val::Undefined,
-                                    ),
                                     size: Size::new(
-                                        Val::Percent(20.0),
-                                        Val::Percent(80.0),
+                                        Val::Px(200.0),
+                                        Val::Px(70.0),
                                     ),
                                     ..default()
                                 },

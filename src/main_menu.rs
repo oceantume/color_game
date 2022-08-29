@@ -82,7 +82,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                             "Guess Hue?",
                             TextStyle {
                                 font: asset_server.load("edosz.ttf"),
-                                font_size: 40.0,
+                                font_size: 45.0,
                                 color: Color::GREEN,
                             },
                         )
@@ -93,7 +93,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                             "Made for Bevy Jam 2",
                             TextStyle {
                                 font: asset_server.load("edosz.ttf"),
-                                font_size: 20.0,
+                                font_size: 25.0,
                                 color: Color::YELLOW_GREEN,
                             },
                         )
