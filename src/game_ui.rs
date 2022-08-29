@@ -7,8 +7,8 @@ use crate::widgets::{
 use crate::{color_mixer::mix_colors, AppState};
 
 use crate::game::{
-    ColorSelector, GameState, LevelState, PlayerColorsChanged, StartLevelEvent,
-    PALETTE_DATA,
+    ColorSelector, GameState, LevelState, PlayerColorsChanged,
+    StartLevelEvent, OBJECTIVES_DATA, PALETTE_DATA, AlertStartedEvent, AlertEndedEvent,
 };
 
 pub struct GameUiPlugin;
@@ -33,7 +33,9 @@ impl Plugin for GameUiPlugin {
                 .with_system(update_selection_indicator)
                 .with_system(update_level_indicator)
                 .with_system(update_lives_indicator)
-                .with_system(handle_color_clicked),
+                .with_system(handle_color_clicked)
+                .with_system(show_alert)
+                .with_system(hide_alert),
         );
     }
 }
@@ -61,6 +63,12 @@ struct LevelIndicator;
 
 #[derive(Component)]
 struct LivesIndicator;
+
+#[derive(Component)]
+struct AlertVisibility(bool);
+
+#[derive(Component)]
+struct AlertTextNode;
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let menu_button = spawn_game_button(
@@ -218,10 +226,30 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ..default()
                 })
                 .with_children(|bottom_section| {
+                    bottom_section
+                        .spawn_bundle(TextBundle {
+                            style: Style {
+                                display: Display::None,
+                                ..default()
+                            },
+                            text: Text::from_section(
+                                "",
+                                TextStyle {
+                                    color: Color::ORANGE_RED,
+                                    font: asset_server.load("edosz.ttf"),
+                                    font_size: 40.0,
+                                },
+                            ),
+                            ..default()
+                        })
+                        .insert(AlertTextNode)
+                        .insert(AlertVisibility(true));
+
                     PALETTE_DATA.iter().for_each(|color| {
                         bottom_section
                             .spawn_bundle(ButtonBundle {
                                 style: Style {
+                                    display: Display::Flex,
                                     max_size: Size::new(
                                         Val::Px(200.0),
                                         Val::Undefined,
@@ -237,7 +265,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                             })
                             .insert(ColorSelector {
                                 color: (*color).into(),
-                            });
+                            })
+                            .insert(AlertVisibility(false));
                     });
                 });
         })
@@ -352,7 +381,7 @@ fn update_level_indicator(
 ) {
     for mut indicator in query.iter_mut() {
         let level_text = level.as_ref().map_or("-".to_string(), |level| {
-            (level.level_index + 1).to_string()
+            format!("{}/{}", level.level_index + 1, OBJECTIVES_DATA.len())
         });
 
         if indicator.value != level_text {
@@ -371,6 +400,45 @@ fn update_lives_indicator(
                 (0..game.lives_remaining).fold(String::new(), |s, _| s + "X");
             if indicator.value != lives_text {
                 indicator.value = lives_text;
+            }
+        }
+    }
+}
+
+fn show_alert(
+    mut alert_evr: EventReader<AlertStartedEvent>,
+    mut visiblity_query: Query<(&mut Style, &AlertVisibility)>,
+    mut text_query: Query<&mut Text, With<AlertTextNode>>,
+) {
+    if let Some(event) = alert_evr.iter().last() {
+        for (mut style, alert_visibility) in visiblity_query.iter_mut() {
+            style.display = match alert_visibility.0 {
+                true => Display::Flex,
+                false => Display::None,
+            }
+        }
+
+        for mut text in text_query.iter_mut() {
+            text.sections[0].value = event.1.clone();
+            text.sections[0].style.color = match event.0 {
+                crate::game::AlertType::LevelFailed => Color::ORANGE_RED,
+                crate::game::AlertType::LevelSucceeded => Color::GREEN,
+                crate::game::AlertType::GameLost => Color::RED,
+                crate::game::AlertType::GameWon => Color::GREEN,
+            };
+        }
+    }
+}
+
+fn hide_alert(
+    mut alert_evr: EventReader<AlertEndedEvent>,
+    mut visiblity_query: Query<(&mut Style, &AlertVisibility)>,
+) {
+    if alert_evr.iter().last().is_some() {
+        for (mut style, alert_visibility) in visiblity_query.iter_mut() {
+            style.display = match alert_visibility.0 {
+                true => Display::None,
+                false => Display::Flex,
             }
         }
     }

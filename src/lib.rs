@@ -12,9 +12,6 @@ pub const LAUNCHER_TITLE: &str = "Guess Hue?";
 enum AppState {
     MainMenu,
     InGame,
-    LevelFailed,
-    LevelSucceeded,
-    GameOver,
 }
 
 pub fn app() -> App {

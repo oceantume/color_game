@@ -10,8 +10,11 @@ impl Plugin for GamePlugin {
             .add_event::<PrepareLevelEvent>()
             .add_event::<StartLevelEvent>()
             .add_event::<PlayerColorsChanged>()
+            .add_event::<LevelSucceededEvent>()
             .add_event::<LevelFailedEvent>()
-            .add_event::<GameOverEvent>()
+            .add_event::<GameWonEvent>()
+            .add_event::<AlertStartedEvent>()
+            .add_event::<AlertEndedEvent>()
             .add_system_set(
                 SystemSet::on_enter(AppState::InGame)
                     .with_system(setup)
@@ -29,42 +32,61 @@ impl Plugin for GamePlugin {
                     .with_system(prepare_level)
                     .with_system(reset_level)
                     .with_system(check_level_finished)
-                    .with_system(check_game_over)
-                    .with_system(show_game_over)
+                    .with_system(check_game_lost)
                     .with_system(update_remaining_lives)
-                    .with_system(show_level_failed),
+                    .with_system(show_level_succeeded)
+                    .with_system(show_level_failed)
+                    .with_system(show_game_won)
+                    .with_system(setup_alert_timer)
+                    .with_system(update_alert_timer)
+                    .with_system(
+                        update_level_after_alert.after(update_alert_timer),
+                    ),
             );
     }
 }
 
-const PALETTE_WHITE: Color = Color::rgb(1.0, 1.0, 1.0);
-const PALETTE_RED: Color = Color::rgb(1.0, 0.0, 0.0);
-const PALETTE_YELLOW: Color = Color::rgb(1.0, 1.0, 0.0);
-const PALETTE_BLUE: Color = Color::rgb(0.0, 0.0, 1.0);
-const PALETTE_BLACK: Color = Color::rgb(0.0, 0.0, 0.0);
+const WHITE: Color = Color::rgb(1.0, 1.0, 1.0);
+const RED: Color = Color::rgb(1.0, 0.0, 0.0);
+const YELLOW: Color = Color::rgb(1.0, 1.0, 0.0);
+const BLUE: Color = Color::rgb(0.0, 0.0, 1.0);
+const BLACK: Color = Color::rgb(0.0, 0.0, 0.0);
 
-pub const PALETTE_DATA: [Color; 5] = [
-    PALETTE_WHITE,
-    PALETTE_RED,
-    PALETTE_YELLOW,
-    PALETTE_BLUE,
-    PALETTE_BLACK,
-];
+pub const PALETTE_DATA: [Color; 5] = [WHITE, RED, YELLOW, BLUE, BLACK];
 
-// TODO: add more objectives.
-// TODO: generate randomized objectives with increasing difficulty.
-pub const OBJECTIVES_DATA: [&'static [Color]; 11] = [
-    &[PALETTE_BLUE, PALETTE_YELLOW],
-    &[PALETTE_BLACK, PALETTE_YELLOW],
-    &[PALETTE_RED, PALETTE_YELLOW],
-    &[PALETTE_BLUE, PALETTE_WHITE],
-    &[PALETTE_RED, PALETTE_WHITE],
-    &[PALETTE_RED, PALETTE_YELLOW, PALETTE_YELLOW],
-    &[PALETTE_YELLOW, PALETTE_BLUE, PALETTE_WHITE],
-    &[PALETTE_RED, PALETTE_BLUE, PALETTE_WHITE],
-    &[PALETTE_YELLOW, PALETTE_BLACK, PALETTE_BLACK],
-    &[PALETTE_RED, PALETTE_RED, PALETTE_YELLOW, PALETTE_WHITE],
-    &[PALETTE_RED, PALETTE_BLUE, PALETTE_YELLOW, PALETTE_BLACK],
+pub const OBJECTIVES_DATA: &'static [&'static [Color]] = &[
+    // Complexity: 2
+    &[BLUE, YELLOW],
+    &[BLACK, YELLOW],
+    /*&[RED, YELLOW],
+    &[BLUE, WHITE],
+    &[RED, WHITE],
+    // Complexity: 3
+    &[RED, YELLOW, YELLOW],
+    &[YELLOW, BLUE, WHITE],
+    &[RED, BLUE, WHITE],
+    &[YELLOW, BLACK, BLACK],
+    &[YELLOW, BLUE, BLUE],
+    &[BLUE, WHITE, RED],
+    // Complexity: 4
+    &[WHITE, RED, RED, YELLOW],
+    &[RED, YELLOW, BLUE, BLACK],
+    &[WHITE, YELLOW, YELLOW, BLUE],
+    &[WHITE, RED, YELLOW, YELLOW],
+    &[RED, RED, YELLOW, BLACK],
+    // Complexity: 5
+    &[YELLOW, BLACK, BLACK, BLACK, BLACK],
+    &[WHITE, WHITE, WHITE, YELLOW, RED],
+    &[WHITE, RED, RED, RED, YELLOW],
+    &[WHITE, WHITE, WHITE, RED, BLUE],
+    &[YELLOW, YELLOW, BLUE, BLUE, BLUE],
+    &[WHITE, RED, RED, RED, BLUE],
+    // Complexity: 6
+    &[WHITE, WHITE, WHITE, WHITE, YELLOW, BLUE],
+    &[RED, BLUE, YELLOW, YELLOW, BLACK, BLACK],
+    &[WHITE, BLACK, BLACK, RED, RED, RED],
+    &[RED, RED, BLUE, BLACK, BLACK, BLACK],
+    &[YELLOW, YELLOW, BLUE, BLACK, BLACK, BLACK],*/
 ];
 
 pub struct GameState {
@@ -78,26 +100,32 @@ pub struct LevelState {
 }
 
 impl LevelState {
-    pub fn new(level_index: u32) -> Self {
+    pub fn new(level_index: u32, colors: Vec<Color>) -> Self {
         Self {
             level_index,
             selected_colors: default(),
-            objective_colors: Self::prepare_objective(level_index),
+            objective_colors: colors,
         }
     }
 
     pub fn reset(&mut self) {
         self.selected_colors.clear();
     }
+    
+    pub fn is_last_level(&self) -> bool {
+        self.level_index == (OBJECTIVES_DATA.len() - 1) as u32
+    }
 
-    fn prepare_objective(level_index: u32) -> Vec<Color> {
-        if level_index > OBJECTIVES_DATA.len() as u32 {
-            panic!("Reached the end of objectives");
+    pub fn prepare_objective(level_index: u32) -> Option<Vec<Color>> {
+        if level_index >= OBJECTIVES_DATA.len() as u32 {
+            None
+        } else {
+            Some(OBJECTIVES_DATA[level_index as usize].into())
         }
-
-        OBJECTIVES_DATA[level_index as usize].into()
     }
 }
+
+struct AlertTimer(Timer, AlertType);
 
 #[derive(Component)]
 pub struct ColorSelector {
@@ -110,14 +138,27 @@ fn setup(mut commands: Commands) {
 
 fn teardown(mut commands: Commands) {
     commands.remove_resource::<LevelState>();
+    commands.remove_resource::<AlertTimer>();
 }
 
 pub struct PrepareLevelEvent;
 pub struct ResetLevelEvent;
-pub struct StartLevelEvent(u32);
+pub struct StartLevelEvent(pub u32);
 pub struct PlayerColorsChanged;
+pub struct LevelSucceededEvent;
 pub struct LevelFailedEvent;
-pub struct GameOverEvent;
+pub struct GameWonEvent;
+
+#[derive(Clone, Copy)]
+pub enum AlertType {
+    LevelFailed,
+    LevelSucceeded,
+    GameLost,
+    GameWon,
+}
+
+pub struct AlertStartedEvent(pub AlertType, pub String);
+pub struct AlertEndedEvent(pub AlertType);
 
 fn prepare_first_level(mut events: EventWriter<PrepareLevelEvent>) {
     events.send(PrepareLevelEvent);
@@ -132,11 +173,12 @@ fn prepare_level(
     for _ in prepare_evr.iter() {
         let level_index =
             level.as_ref().map_or(0, |level| level.level_index + 1);
-        let new_level = LevelState::new(level_index);
-        commands.insert_resource(new_level);
-
-        start_evw.send(StartLevelEvent(level_index));
-        debug!("Prepared level {}", level_index);
+        let objective_colors = LevelState::prepare_objective(level_index);
+        if let Some(objective_colors) = objective_colors {
+            let new_level = LevelState::new(level_index, objective_colors);
+            commands.insert_resource(new_level);
+            start_evw.send(StartLevelEvent(level_index));
+        }
     }
 }
 
@@ -156,7 +198,8 @@ fn reset_level(
 fn check_level_finished(
     level: Option<ResMut<LevelState>>,
     mut evr: EventReader<PlayerColorsChanged>,
-    mut prepare_evw: EventWriter<PrepareLevelEvent>,
+    mut won_evw: EventWriter<GameWonEvent>,
+    mut succeeded_evw: EventWriter<LevelSucceededEvent>,
     mut failed_evw: EventWriter<LevelFailedEvent>,
 ) {
     if evr.iter().count() < 1 {
@@ -168,22 +211,101 @@ fn check_level_finished(
         let objective_color = mix_colors(&level.objective_colors);
 
         if player_color == objective_color {
-            // todo: send a level success event instead so we can show the success.
-            prepare_evw.send(PrepareLevelEvent);
+            if level.is_last_level() {
+                won_evw.send(GameWonEvent);
+            } else {
+                succeeded_evw.send(LevelSucceededEvent);
+            }
         } else if level.selected_colors.len() >= level.objective_colors.len() {
-            // todo: send a level failure event instead so we can show the failure.
             failed_evw.send(LevelFailedEvent);
         }
     }
 }
 
+fn show_level_succeeded(
+    mut succeeded_evr: EventReader<LevelSucceededEvent>,
+    mut alert_evw: EventWriter<AlertStartedEvent>,
+) {
+    if succeeded_evr.iter().count() > 0 {
+        alert_evw.send(AlertStartedEvent(
+            AlertType::LevelSucceeded,
+            "Right answer!".into(),
+        ))
+    }
+}
+
 fn show_level_failed(
     mut failed_evr: EventReader<LevelFailedEvent>,
-    mut reset_evw: EventWriter<ResetLevelEvent>,
+    mut alert_evw: EventWriter<AlertStartedEvent>,
 ) {
     if failed_evr.iter().count() > 0 {
-        // todo: show level failed on UI before resetting
-        reset_evw.send(ResetLevelEvent);
+        alert_evw.send(AlertStartedEvent(
+            AlertType::LevelFailed,
+            "Wrong answer!".into(),
+        ))
+    }
+}
+
+fn show_game_won(
+    mut won_evr: EventReader<GameWonEvent>,
+    mut alert_evw: EventWriter<AlertStartedEvent>,
+) {
+    if won_evr.iter().count() > 0 {
+        alert_evw.send(AlertStartedEvent(
+            AlertType::GameWon,
+            "Congratulations, you won the game! This is quite the feat!".into()
+        ))
+    }
+}
+
+fn setup_alert_timer(
+    mut commands: Commands,
+    mut evr: EventReader<AlertStartedEvent>,
+) {
+    if let Some(event) = evr.iter().last() {
+        let duration = match event.0 {
+            AlertType::LevelFailed => Some(2.5),
+            AlertType::LevelSucceeded => Some(1.0),
+            AlertType::GameLost => None,
+            AlertType::GameWon => None,
+        };
+
+        if let Some(duration) = duration {
+            commands.insert_resource(AlertTimer(
+                Timer::from_seconds(duration, false),
+                event.0,
+            ));
+        }
+    }
+}
+
+fn update_alert_timer(
+    mut commands: Commands,
+    time: Res<Time>,
+    alert_timer: Option<ResMut<AlertTimer>>,
+    mut evw: EventWriter<AlertEndedEvent>,
+) {
+    alert_timer.map(|mut alert_timer| {
+        alert_timer.0.tick(time.delta());
+
+        if alert_timer.0.finished() {
+            evw.send(AlertEndedEvent(alert_timer.1));
+            commands.remove_resource::<AlertTimer>();
+        }
+    });
+}
+
+fn update_level_after_alert(
+    mut evr: EventReader<AlertEndedEvent>,
+    mut reset_evw: EventWriter<ResetLevelEvent>,
+    mut prepare_evw: EventWriter<PrepareLevelEvent>,
+) {
+    if let Some(event) = evr.iter().last() {
+        match event.0 {
+            AlertType::LevelFailed => reset_evw.send(ResetLevelEvent),
+            AlertType::LevelSucceeded => prepare_evw.send(PrepareLevelEvent),
+            _ => (),
+        }
     }
 }
 
@@ -196,21 +318,14 @@ fn update_remaining_lives(
     }
 }
 
-fn check_game_over(
+fn check_game_lost(
     game: ResMut<GameState>,
-    mut evw: EventWriter<GameOverEvent>,
+    mut alert_evw: EventWriter<AlertStartedEvent>,
 ) {
     if game.lives_remaining == 0 {
-        evw.send(GameOverEvent);
-    }
-}
-
-fn show_game_over(
-    mut evr: EventReader<GameOverEvent>,
-    mut app_state: ResMut<State<AppState>>,
-) {
-    if evr.iter().count() > 0 {
-        // todo: show game over popup before leaving to main menu
-        app_state.set(AppState::MainMenu).unwrap();
+        alert_evw.send(AlertStartedEvent(
+            AlertType::GameLost,
+            "You lost!".into(),
+        ));
     }
 }
