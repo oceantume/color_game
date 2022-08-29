@@ -95,7 +95,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &asset_server,
         GameIndicator {
             label: "Lives".into(),
-            value: "0/5".into(),
+            value: "1/3".into(),
         },
     );
     commands.entity(lives_indicator).insert(LivesIndicator);

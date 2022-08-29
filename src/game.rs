@@ -68,7 +68,7 @@ pub const OBJECTIVES_DATA: &'static [&'static [Color]] = &[
     &[YELLOW, BLUE, WHITE],
     &[RED, BLUE, WHITE],
     &[YELLOW, BLACK, BLACK],
-    &[YELLOW, BLUE, BLUE],
+    &[RED, WHITE, WHITE],
     // Complexity: 4
     &[WHITE, RED, RED, YELLOW],
     &[RED, YELLOW, BLUE, BLACK],
@@ -84,9 +84,9 @@ pub const OBJECTIVES_DATA: &'static [&'static [Color]] = &[
     // Complexity: 6
     &[RED, BLUE, YELLOW, YELLOW, BLACK, BLACK],
     &[WHITE, WHITE, WHITE, WHITE, YELLOW, BLUE],
-    &[RED, RED, BLUE, BLACK, BLACK, BLACK],
     &[YELLOW, YELLOW, BLUE, BLACK, BLACK, BLACK],
     &[BLACK, BLACK, RED, RED, RED, YELLOW],
+    &[RED, RED, BLUE, BLACK, BLACK, BLACK],
 ];
 
 pub struct GameOptions {
@@ -236,7 +236,7 @@ fn check_level_finished(
             if level.is_last_level() {
                 won_evw.send(GameWonEvent);
             } else {
-                game.lives_remaining = u32::min(5, game.lives_remaining + 1);
+                game.lives_remaining = u32::min(3, game.lives_remaining + 1);
                 succeeded_evw.send(LevelSucceededEvent);
             }
         } else if level.selected_colors.len() >= level.objective_colors.len() {
