@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::game::GameOptions;
+
 pub struct GameButtonPlugin;
 
 impl Plugin for GameButtonPlugin {
@@ -8,7 +10,8 @@ impl Plugin for GameButtonPlugin {
             SystemSet::new()
                 .label(GameButtonLabel)
                 .with_system(update_text)
-                .with_system(handle_button_hover),
+                .with_system(handle_button_hover)
+                .with_system(click_sound),
         );
     }
 }
@@ -99,5 +102,20 @@ fn handle_button_hover(
                 }
             }
         }
+    }
+}
+
+fn click_sound(
+    query: Query<&Interaction, (With<GameButton>, Changed<Interaction>)>,
+    asset_server: Res<AssetServer>,
+    audio: Res<Audio>,
+    options: Res<GameOptions>,
+) {
+    if options.mute {
+        return;
+    }
+    
+    if query.iter().any(|interaction| *interaction == Interaction::Clicked) {
+        audio.play(asset_server.load("audio/click2.ogg"));
     }
 }

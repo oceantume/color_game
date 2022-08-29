@@ -8,7 +8,7 @@ use crate::{color_mixer::mix_colors, AppState};
 
 use crate::game::{
     ColorSelector, GameState, LevelState, PlayerColorsChanged,
-    StartLevelEvent, OBJECTIVES_DATA, PALETTE_DATA, AlertStartedEvent, AlertEndedEvent,
+    StartLevelEvent, OBJECTIVES_DATA, PALETTE_DATA, AlertStartedEvent, AlertEndedEvent, GameOptions,
 };
 
 pub struct GameUiPlugin;
@@ -85,7 +85,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &asset_server,
         GameIndicator {
             label: "Level".into(),
-            value: "1".into(),
+            value: "1/25".into(),
         },
     );
     commands.entity(level_indicator).insert(LevelIndicator);
@@ -95,7 +95,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &asset_server,
         GameIndicator {
             label: "Lives".into(),
-            value: "XXXXX".into(),
+            value: "0/5".into(),
         },
     );
     commands.entity(lives_indicator).insert(LivesIndicator);
@@ -117,7 +117,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         &asset_server,
         GameIndicator {
             label: "Selected colors".into(),
-            value: "1".into(),
+            value: "0".into(),
         },
     );
     commands
@@ -297,6 +297,9 @@ fn handle_color_clicked(
     >,
     mut board: Option<ResMut<LevelState>>,
     mut evw: EventWriter<PlayerColorsChanged>,
+    asset_server: Res<AssetServer>,
+    audio: Res<Audio>,
+    options: Res<GameOptions>,
 ) {
     if let Some(board) = board.as_mut() {
         for (interaction, color_selection) in &interaction_query {
@@ -304,6 +307,10 @@ fn handle_color_clicked(
                 Interaction::Clicked => {
                     board.selected_colors.push(color_selection.color);
                     evw.send(PlayerColorsChanged);
+
+                    if !options.mute {
+                        audio.play(asset_server.load("audio/click.ogg"));
+                    }
                 }
                 _ => (),
             }
@@ -393,8 +400,9 @@ fn update_lives_indicator(
 ) {
     if game.is_changed() {
         for mut indicator in query.iter_mut() {
-            let lives_text =
-                (0..game.lives_remaining).fold(String::new(), |s, _| s + "X");
+            //let lives_text =
+            //    (0..game.lives_remaining).fold(String::new(), |s, _| s + "X");
+            let lives_text = format!("{}/{}", game.lives_remaining, 5);
             if indicator.value != lives_text {
                 indicator.value = lives_text;
             }

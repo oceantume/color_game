@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::{
+    game::GameOptions,
     widgets::{spawn_game_button, GameButton},
     AppState,
 };
@@ -17,7 +18,9 @@ impl Plugin for MainMenuPlugin {
         )
         .add_system_set(
             SystemSet::on_update(AppState::MainMenu)
-                .with_system(play),
+                .with_system(play)
+                .with_system(toggle_mute)
+                .with_system(update_mute_button),
         );
     }
 }
@@ -31,6 +34,9 @@ struct MenuItem;
 #[derive(Component)]
 struct PlayButton;
 
+#[derive(Component)]
+struct MuteButton;
+
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let play_button = spawn_game_button(
         &mut commands,
@@ -39,16 +45,16 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             text: "Play".into(),
         },
     );
-
     commands.entity(play_button).insert(PlayButton);
 
-    let options_button = spawn_game_button(
+    let mute_button = spawn_game_button(
         &mut commands,
         &asset_server,
         GameButton {
-            text: "Options".into(),
+            text: "Mute sound".into(),
         },
     );
+    commands.entity(mute_button).insert(MuteButton);
 
     commands
         .spawn_bundle(NodeBundle {
@@ -93,7 +99,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                             "Made for Bevy Jam 2",
                             TextStyle {
                                 font: asset_server.load("edosz.ttf"),
-                                font_size: 25.0,
+                                font_size: 22.0,
                                 color: Color::YELLOW_GREEN,
                             },
                         )
@@ -119,7 +125,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ..default()
                 })
                 .add_child(play_button)
-                .add_child(options_button);
+                .add_child(mute_button);
         });
 }
 
@@ -141,4 +147,34 @@ fn play(
     if clicked {
         app_state.set(AppState::InGame).unwrap();
     }
+}
+
+fn toggle_mute(
+    mut options: ResMut<GameOptions>,
+    query: Query<&Interaction, (With<MuteButton>, Changed<Interaction>)>,
+) {
+    let clicked = query.iter().any(|interaction| match interaction {
+        Interaction::Clicked => true,
+        _ => false,
+    });
+
+    if clicked {
+        options.mute = !options.mute;
+    }
+}
+
+fn update_mute_button(
+    options: Res<GameOptions>,
+    mut query: Query<&mut GameButton, With<MuteButton>>,
+) {
+    query.iter_mut().for_each(|mut btn| {
+        let text = match options.mute {
+            true => "Unmute sound",
+            false => "Mute sound",
+        };
+        
+        if btn.text != text {
+            btn.text = text.into();
+        }
+    })
 }

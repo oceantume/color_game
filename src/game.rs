@@ -13,8 +13,10 @@ impl Plugin for GamePlugin {
             .add_event::<LevelSucceededEvent>()
             .add_event::<LevelFailedEvent>()
             .add_event::<GameWonEvent>()
+            .add_event::<GameLostEvent>()
             .add_event::<AlertStartedEvent>()
             .add_event::<AlertEndedEvent>()
+            .insert_resource(GameOptions { mute: false })
             .add_system_set(
                 SystemSet::on_enter(AppState::InGame)
                     .with_system(setup)
@@ -32,13 +34,13 @@ impl Plugin for GamePlugin {
                     .with_system(prepare_level)
                     .with_system(reset_level)
                     .with_system(check_level_finished)
-                    .with_system(check_game_lost)
-                    .with_system(update_remaining_lives)
+                    .with_system(show_game_lost)
                     .with_system(show_level_succeeded)
                     .with_system(show_level_failed)
                     .with_system(show_game_won)
                     .with_system(setup_alert_timer)
                     .with_system(update_alert_timer)
+                    .with_system(play_alert_sound)
                     .with_system(
                         update_level_after_alert.after(update_alert_timer),
                     ),
@@ -58,7 +60,7 @@ pub const OBJECTIVES_DATA: &'static [&'static [Color]] = &[
     // Complexity: 2
     &[BLUE, YELLOW],
     &[BLACK, YELLOW],
-    /*&[RED, YELLOW],
+    &[RED, YELLOW],
     &[BLUE, WHITE],
     &[RED, WHITE],
     // Complexity: 3
@@ -67,7 +69,6 @@ pub const OBJECTIVES_DATA: &'static [&'static [Color]] = &[
     &[RED, BLUE, WHITE],
     &[YELLOW, BLACK, BLACK],
     &[YELLOW, BLUE, BLUE],
-    &[BLUE, WHITE, RED],
     // Complexity: 4
     &[WHITE, RED, RED, YELLOW],
     &[RED, YELLOW, BLUE, BLACK],
@@ -76,21 +77,30 @@ pub const OBJECTIVES_DATA: &'static [&'static [Color]] = &[
     &[RED, RED, YELLOW, BLACK],
     // Complexity: 5
     &[YELLOW, BLACK, BLACK, BLACK, BLACK],
-    &[WHITE, WHITE, WHITE, YELLOW, RED],
     &[WHITE, RED, RED, RED, YELLOW],
-    &[WHITE, WHITE, WHITE, RED, BLUE],
-    &[YELLOW, YELLOW, BLUE, BLUE, BLUE],
+    &[WHITE, WHITE, WHITE, YELLOW, RED],
     &[WHITE, RED, RED, RED, BLUE],
+    &[WHITE, WHITE, WHITE, RED, BLUE],
     // Complexity: 6
-    &[WHITE, WHITE, WHITE, WHITE, YELLOW, BLUE],
     &[RED, BLUE, YELLOW, YELLOW, BLACK, BLACK],
-    &[WHITE, BLACK, BLACK, RED, RED, RED],
+    &[WHITE, WHITE, WHITE, WHITE, YELLOW, BLUE],
     &[RED, RED, BLUE, BLACK, BLACK, BLACK],
-    &[YELLOW, YELLOW, BLUE, BLACK, BLACK, BLACK],*/
+    &[YELLOW, YELLOW, BLUE, BLACK, BLACK, BLACK],
+    &[BLACK, BLACK, RED, RED, RED, YELLOW],
 ];
+
+pub struct GameOptions {
+    pub mute: bool,
+}
 
 pub struct GameState {
     pub lives_remaining: u32,
+}
+
+impl GameState {
+    pub fn is_lost(&self) -> bool {
+        self.lives_remaining < 1
+    }
 }
 
 pub struct LevelState {
@@ -111,7 +121,19 @@ impl LevelState {
     pub fn reset(&mut self) {
         self.selected_colors.clear();
     }
-    
+
+    pub fn is_color_found(&self) -> bool {
+        let selected_color = mix_colors(&self.selected_colors);
+        let objective_color = mix_colors(&self.objective_colors);
+        let mut total_diff = 0.0;
+        total_diff += f32::abs(objective_color.r() - selected_color.r());
+        total_diff += f32::abs(objective_color.g() - selected_color.g());
+        total_diff += f32::abs(objective_color.b() - selected_color.b());
+
+        // NOTE: account for small differences in float multiplications
+        total_diff < 0.0001
+    }
+
     pub fn is_last_level(&self) -> bool {
         self.level_index == (OBJECTIVES_DATA.len() - 1) as u32
     }
@@ -133,7 +155,7 @@ pub struct ColorSelector {
 }
 
 fn setup(mut commands: Commands) {
-    commands.insert_resource(GameState { lives_remaining: 5 });
+    commands.insert_resource(GameState { lives_remaining: 1 });
 }
 
 fn teardown(mut commands: Commands) {
@@ -148,6 +170,7 @@ pub struct PlayerColorsChanged;
 pub struct LevelSucceededEvent;
 pub struct LevelFailedEvent;
 pub struct GameWonEvent;
+pub struct GameLostEvent;
 
 #[derive(Clone, Copy)]
 pub enum AlertType {
@@ -196,28 +219,33 @@ fn reset_level(
 }
 
 fn check_level_finished(
+    mut game: ResMut<GameState>,
     level: Option<ResMut<LevelState>>,
     mut evr: EventReader<PlayerColorsChanged>,
-    mut won_evw: EventWriter<GameWonEvent>,
     mut succeeded_evw: EventWriter<LevelSucceededEvent>,
     mut failed_evw: EventWriter<LevelFailedEvent>,
+    mut won_evw: EventWriter<GameWonEvent>,
+    mut lost_evw: EventWriter<GameLostEvent>,
 ) {
     if evr.iter().count() < 1 {
         return;
     }
 
     if let Some(ref level) = level {
-        let player_color = mix_colors(&level.selected_colors);
-        let objective_color = mix_colors(&level.objective_colors);
-
-        if player_color == objective_color {
+        if level.is_color_found() {
             if level.is_last_level() {
                 won_evw.send(GameWonEvent);
             } else {
+                game.lives_remaining = u32::min(5, game.lives_remaining + 1);
                 succeeded_evw.send(LevelSucceededEvent);
             }
         } else if level.selected_colors.len() >= level.objective_colors.len() {
-            failed_evw.send(LevelFailedEvent);
+            game.lives_remaining -= 1;
+            if game.is_lost() {
+                lost_evw.send(GameLostEvent);
+            } else {
+                failed_evw.send(LevelFailedEvent);
+            }
         }
     }
 }
@@ -253,8 +281,18 @@ fn show_game_won(
     if won_evr.iter().count() > 0 {
         alert_evw.send(AlertStartedEvent(
             AlertType::GameWon,
-            "Congratulations, you won the game! This is quite the feat!".into()
+            "Congratulations, you won!".into(),
         ))
+    }
+}
+
+fn show_game_lost(
+    mut lost_evr: EventReader<GameLostEvent>,
+    mut alert_evw: EventWriter<AlertStartedEvent>,
+) {
+    if lost_evr.iter().count() > 0 {
+        alert_evw
+            .send(AlertStartedEvent(AlertType::GameLost, "You lost!".into()));
     }
 }
 
@@ -296,6 +334,7 @@ fn update_alert_timer(
 }
 
 fn update_level_after_alert(
+    game: Res<GameState>,
     mut evr: EventReader<AlertEndedEvent>,
     mut reset_evw: EventWriter<ResetLevelEvent>,
     mut prepare_evw: EventWriter<PrepareLevelEvent>,
@@ -309,23 +348,24 @@ fn update_level_after_alert(
     }
 }
 
-fn update_remaining_lives(
-    mut game: ResMut<GameState>,
-    mut evr: EventReader<LevelFailedEvent>,
+fn play_alert_sound(
+    mut alert_evr: EventReader<AlertStartedEvent>,
+    asset_server: Res<AssetServer>,
+    audio: Res<Audio>,
+    options: Res<GameOptions>,
 ) {
-    for _ in evr.iter() {
-        game.lives_remaining -= 1;
+    if options.mute {
+        return;
     }
-}
 
-fn check_game_lost(
-    game: ResMut<GameState>,
-    mut alert_evw: EventWriter<AlertStartedEvent>,
-) {
-    if game.lives_remaining == 0 {
-        alert_evw.send(AlertStartedEvent(
-            AlertType::GameLost,
-            "You lost!".into(),
-        ));
+    if let Some(event) = alert_evr.iter().last() {
+        let source = match event.0 {
+            AlertType::LevelFailed => "audio/failure.ogg",
+            AlertType::LevelSucceeded => "audio/succeeded.ogg",
+            AlertType::GameLost => "audio/lost.ogg",
+            AlertType::GameWon => "audio/won.ogg",
+        };
+
+        audio.play(asset_server.load(source));
     }
 }
